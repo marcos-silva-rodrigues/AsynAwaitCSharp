@@ -1,6 +1,7 @@
 ﻿using ByteBank.Core.Model;
 using ByteBank.Core.Repository;
 using ByteBank.Core.Service;
+using ByteBank.View.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,32 +37,45 @@ namespace ByteBank.View
         {
             BtnProcessar.IsEnabled = false;
             var contas = r_Repositorio.GetContaClientes();
+            PgsProgresso.Maximum = contas.Count();
 
-            AtualizarView(new List<string>(), TimeSpan.Zero);
+            LimparView();
 
             var inicio = DateTime.Now;
 
-            var resultado = await ConsolidarContas(contas);
+            var progress = new Progress<string>(str => PgsProgresso.Value++);
+            //var byteBankProgress = new ByteBankProgress<string>(str => PgsProgresso.Value++);
+            var resultado = await ConsolidarContas(contas, progress);
+
             var fim = DateTime.Now;
             AtualizarView(resultado, fim - inicio);
             BtnProcessar.IsEnabled = true;
         }
 
+        private void LimparView()
+        {
+            LstResultados.ItemsSource = null;
+            TxtTempo.Text = null;
+        }
         private void AtualizarView(IEnumerable<String> result, TimeSpan elapsedTime)
         {
             var tempoDecorrido = $"{ elapsedTime.Seconds }.{ elapsedTime.Milliseconds} segundos!";
             var mensagem = $"Processamento de {result.Count()} clientes em {tempoDecorrido}";
 
             LstResultados.ItemsSource = result;
+            PgsProgresso.Value = 0;
             TxtTempo.Text = mensagem;
         }
 
-        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas)
+        private async Task<string[]> ConsolidarContas(IEnumerable<ContaCliente> contas, IProgress<string> reportadorProgresso)
         {
-
             var tasks = contas.Select(conta =>
-                Task.Factory.StartNew(() => 
-                    r_Servico.ConsolidarMovimentacao(conta))
+                Task.Factory.StartNew(() =>
+                {
+                    var resultado = r_Servico.ConsolidarMovimentacao(conta);
+                    reportadorProgresso.Report(resultado);
+                    return resultado;
+                })
             );
 
             return await Task.WhenAll(tasks);
